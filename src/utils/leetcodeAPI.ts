@@ -1,4 +1,4 @@
-const fetch = (await import('node-fetch')).default;
+const fetch = require('node-fetch');
 import { JSDOM } from 'jsdom';
 
 interface TestCase {
@@ -6,12 +6,17 @@ interface TestCase {
     output: string;
 }
 
-export async function getTestCases(): Promise<void>{
-    const url: string =`https://alfa-leetcode-api.onrender.com/select?titleSlug=${problem_name}`;
-}
+export async function getTestCases(titleSlug?: string): Promise<TestCase[]>{
+    const url: string =`https://alfa-leetcode-api.onrender.com/select?titleSlug=${titleSlug}`;
 try{
     const response = await fetch(url);
-    const data =await response.json();
+    if(!response.ok){
+        throw new Error(`Failed to fetch data: ${response.statusText}`);
+    }
+    const data: { question?: string } = await response.json() as { question?: string };
+    if (!data.question) {
+        throw new Error(`No question data found for problem "${titleSlug}"`);
+    }
     const dom = new JSDOM(data.question);
     const preTags = dom.window.document.querySelectorAll('pre');
     const testCases: TestCase[] = [];
@@ -25,5 +30,14 @@ try{
             testCases.push({ input, output });
         }
     });
-
+    return testCases;
+    } catch (error: unknown) {
+        if (error instanceof Error) {
+            console.error(`Error fetching and parsing test cases: ${error.message}`);
+        } else {
+            console.error('Error fetching and parsing test cases');
+        }
+        return [] as TestCase[];
+    }
 }
+
