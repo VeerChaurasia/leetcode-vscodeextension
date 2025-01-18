@@ -1,4 +1,7 @@
-const fetch = require('node-fetch');
+let fetch: any;
+(async () => {
+    fetch = (await import('node-fetch')).default;
+})();
 import { JSDOM } from 'jsdom';
 
 interface TestCase {
@@ -10,6 +13,9 @@ export async function getTestCases(titleSlug?: string): Promise<TestCase[]>{
     const url: string =`https://alfa-leetcode-api.onrender.com/select?titleSlug=${titleSlug}`;
 try{
     const response = await fetch(url);
+    console.log(`Fetching from URL: ${url}`);
+
+
     if(!response.ok){
         throw new Error(`Failed to fetch data: ${response.statusText}`);
     }
@@ -18,6 +24,8 @@ try{
         throw new Error(`No question data found for problem "${titleSlug}"`);
     }
     const dom = new JSDOM(data.question);
+    console.log(`API Response:`, data);
+    
     const preTags = dom.window.document.querySelectorAll('pre');
     const testCases: TestCase[] = [];
     preTags.forEach((preTag)=>{
