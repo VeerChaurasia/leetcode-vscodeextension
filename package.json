@@ -9,25 +9,43 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
-  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onCommand:leetcode-cph.helloWorld",
+    "onCommand:leetcode-cph.fetchTestCases",
+    "onCommand:leetcode-cph.runTestCases",
+    "onCommand:leetcode-cph.createCodeFile",
+    "onStartupFinished"
+  ],
   "contributes": {
     "commands": [
       {
         "command": "leetcode-cph.helloWorld",
-        "title": "Hello World"
+        "title": "LeetCode: Hello World",
+        "category": "Competitive Programming Helper"
+      },
+      {
+        "command": "leetcode-cph.createCodeFile",
+        "title": "LeetCode: Create Code File",
+        "category": "Competitive Programming Helper"
       },
       {
         "command": "leetcode-cph.fetchTestCases",
-        "title": "Fetch Test Cases",
+        "title": "LeetCode: Fetch Test Cases",
         "category": "Competitive Programming Helper"
       },
       {
         "command": "leetcode-cph.runTestCases",
-        "title": "Run Test Cases",
+        "title": "LeetCode: Run Test Cases",
         "category": "Competitive Programming Helper"
       }
-    ]
+    
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true,
+      "desscription": "This extension needs to create files for test cases."
+    }
+  }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
@@ -59,5 +77,9 @@
     "@types/node-fetch": "^2.6.12",
     "jsdom": "^25.0.1",
     "node-fetch": "^3.3.2"
-  }
+  },
+  "main": "./dist/extension.js"
+  
+ 
+  
 }
