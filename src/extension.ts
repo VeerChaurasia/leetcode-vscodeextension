@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
-import { fetchTestCases } from './commands/fetchtestcases'; // Import fetchTestCases
-// import { runTestCases } from './commands/runtestcases'; // Import runTestCases
-import {createCodeFile} from './utils/createCodeFile'
-import {DirectoryExists} from './utils/createCodeFile'
+import * as path from 'path';
+import { exec } from 'child_process';
+import { fetchTestCases } from './commands/fetchtestcases'; 
+import { createCodeFile } from './utils/createCodeFile';
+import { DirectoryExists } from './utils/createCodeFile';
+import { generateMainFile } from './commands/runtestcases';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Competitive Programming Helper is now active.');
@@ -39,6 +41,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     );
+
     const createCodeFileCommand = vscode.commands.registerCommand('leetcode-cph.createCodeFile', async () => {
         // Try to get the workspace folder first
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -84,54 +87,130 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    // const runTestCasesCommand = vscode.commands.registerCommand(
-    //     'leetcode-cph.runTestCases',
-    //     async () => {
-    //         // Prompt user for file containing the solution code
-    //         const fileUri = await vscode.window.showOpenDialog({
-    //             canSelectFiles: true,
-    //             canSelectFolders: false,
-    //             filters: {
-    //                 'JavaScript': ['js'],
-    //                 'Python': ['py'],
-    //                 'C++': ['cpp'],
-    //             },
-    //         });
+    // Assuming test cases are stored in a 'testcases' directory in the workspace
+    const testDir = path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '', 'testcases');
 
-    //         if (fileUri && fileUri[0]) {
-    //             try {
-    //                 const filePath = fileUri[0].fsPath;
-    //                 const language = filePath.split('.').pop()?.toLowerCase() || '';
-    //                 // Here you can add logic for identifying the language based on file extension
+    // Function to run test cases on the compiled solution file
+    async function runTestCases(solutionFilePath: string) {
+        const fileExtension = path.extname(solutionFilePath);
+        
+        // Step 1: Compile the solution if needed (for C++, Python doesn't need compilation)
+        if (fileExtension === '.cpp') {
+            const compiledFile = path.join(path.dirname(solutionFilePath), 'solution.out');
+            
+            // Compile the C++ code
+            await new Promise<void>((resolve, reject) => {
+                exec(`g++ ${solutionFilePath} -o ${compiledFile}`, (error, stdout, stderr) => {
+                    if (error) {
+                        vscode.window.showErrorMessage(`Compilation failed: ${stderr}`);
+                        reject(error);
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+            
+            // Step 2: Run the compiled code
+            await runTestCasesFromDirectory(compiledFile);
+        } else if (fileExtension === '.py') {
+            // For Python, no need to compile, just run the Python file
+            await runTestCasesFromDirectory(solutionFilePath);
+        } else {
+            vscode.window.showErrorMessage('Unsupported file type. Only C++ and Python are supported.');
+        }
+    }
 
-    //                 const problemUrl = await vscode.window.showInputBox({
-    //                     prompt: 'Enter the LeetCode problem URL',
-    //                     placeHolder: 'https://leetcode.com/problems/two-sum/',
-    //                 });
+    // Function to run the test cases from the test directory
+    function runTestCasesFromDirectory(filePath: string) {
+        return new Promise<void>((resolve, reject) => {
+            // Assuming that test cases are input files in the 'testcases' directory
+            exec(`cd ${testDir} && node runTests.js ${filePath}`, (error, stdout, stderr) => {
+                if (error) {
+                    vscode.window.showErrorMessage(`Test case execution failed: ${stderr}`);
+                    reject(error);
+                } else {
+                    vscode.window.showInformationMessage('Test cases executed successfully!');
+                    resolve();
+                }
+            });
+        });
+    }
 
-    //                 if (!problemUrl) {
-    //                     vscode.window.showWarningMessage('No URL provided. Command aborted.');
-    //                     return;
-    //                 }
+    // Registering the command to run test cases
+    const runTestCasesCommand = vscode.commands.registerCommand(
+        'leetcode-cph.runTestCases',
+        async () => {
+            let solutionPath: string;
+            let workspacePath: string;
+    
+            const editor = vscode.window.activeTextEditor;
+    
+            if (!editor) {
+                const fileUris = await vscode.window.showOpenDialog({
+                    canSelectFiles: true,
+                    canSelectFolders: false,
+                    canSelectMany: false,
+                    filters: {
+                        'C++ Files': ['cpp'],
+                        'All Files': ['*']
+                    },
+                    title: 'Select your solution file'
+                });
+    
+                if (!fileUris || fileUris.length === 0) {
+                    vscode.window.showErrorMessage('No file selected');
+                    return;
+                }
+    
+                solutionPath = fileUris[0].fsPath;
+                workspacePath = path.dirname(solutionPath);
+            } else {
+                solutionPath = editor.document.uri.fsPath;
+                workspacePath = path.dirname(solutionPath);
+            }
+    
+            // Log workspace and solution paths
+            console.log('Solution file path:', solutionPath);
+            console.log('Workspace path:', workspacePath);
+    
+            if (!solutionPath.endsWith('.cpp')) {
+                vscode.window.showErrorMessage('Only C++ files are supported for now');
+                return;
+            }
+    
+            // Ensure the test directory path is correct
+            const testDir = path.join(workspacePath, 'testcases');
+            console.log('Test directory path:', testDir);
+    
+            try {
+                await generateMainFile(solutionPath, testDir);
+                const mainFilePath = path.join(workspacePath, 'main.cpp');
+                const mainExePath = path.join(workspacePath, 'main');
+    
+                exec(`g++ "${mainFilePath}" -o "${mainExePath}" && "${mainExePath}"`, {
+                    cwd: workspacePath
+                }, (error, stdout, stderr) => {
+                    if (error) {
+                        vscode.window.showErrorMessage(`Compilation/Runtime error: ${stderr}`);
+                        return;
+                    }
+                    const outputChannel = vscode.window.createOutputChannel('Test Results');
+                    outputChannel.show();
+                    outputChannel.appendLine(stdout);
+                    vscode.window.showInformationMessage('Test cases executed successfully!');
+                });
+            } catch (error) {
+                if (error instanceof Error) {
+                    vscode.window.showErrorMessage(`Error: ${error.message}`);
+                } else {
+                    vscode.window.showErrorMessage('An unknown error occurred');
+                }
+            }
+        }
+    );
+    
 
-    //                 const testCases = await fetchTestCases(problemUrl); // Assuming you've fetched the test cases already
-    //                 await runTestCases(filePath, language, testCases); // Run test cases for the provided solution
-    //                 vscode.window.showInformationMessage('Test cases executed successfully!');
-    //             } catch (error) {
-    //                 if (error instanceof Error) {
-    //                     vscode.window.showErrorMessage(`Error: ${error.message}`);
-    //                 } else {
-    //                     vscode.window.showErrorMessage('An unknown error occurred.');
-    //                 }
-    //             }
-    //         } else {
-    //             vscode.window.showWarningMessage('No file selected. Command aborted.');
-    //         }
-    //     }
-    // );
-
-   
-    context.subscriptions.push(fetchTestCasesCommand,helloWorldCommand,createCodeFileCommand);
+    context.subscriptions.push(fetchTestCasesCommand, helloWorldCommand, createCodeFileCommand, runTestCasesCommand);
 }
 
 export function deactivate() {
