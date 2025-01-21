@@ -187,7 +187,7 @@ export function activate(context: vscode.ExtensionContext) {
                 const mainFilePath = path.join(workspacePath, 'main.cpp');
                 const mainExePath = path.join(workspacePath, 'main');
     
-                exec(`g++ "${mainFilePath}" -o "${mainExePath}" && "${mainExePath}"`, {
+                exec(`g++ -std=c++17"${mainFilePath}" -o "${mainExePath}" && "${mainExePath}"`, {
                     cwd: workspacePath
                 }, (error, stdout, stderr) => {
                     if (error) {
