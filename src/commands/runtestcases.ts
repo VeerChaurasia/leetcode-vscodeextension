@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 
-function generateInputReadingCode(paramType: string): string {
+function generateInputReadingCode(paramType: string, paramName: string): string {
     if (paramType === 'int') {
         return `
         string line;
@@ -12,18 +12,18 @@ function generateInputReadingCode(paramType: string): string {
         // Remove whitespace
         numStr.erase(0, numStr.find_first_not_of(" \\n\\r\\t"));
         numStr.erase(numStr.find_last_not_of(" \\n\\r\\t") + 1);
-        int num = stoi(numStr);`;
+        int ${paramName} = stoi(numStr);`;
     }
     
     if (paramType === 'string') {
         return `
-        string line, str;
+        string line;
         while (getline(inFile, line) && line.empty());  // Skip empty lines
         size_t equalPos = line.find("=");
-        str = equalPos != string::npos ? line.substr(equalPos + 1) : line;
+        string ${paramName} = equalPos != string::npos ? line.substr(equalPos + 1) : line;
         // Remove whitespace and quotes if present
-        str.erase(0, str.find_first_not_of(" \\n\\r\\t\\""));
-        str.erase(str.find_last_not_of(" \\n\\r\\t\\"") + 1);`;
+        ${paramName}.erase(0, ${paramName}.find_first_not_of(" \\n\\r\\t\\""));
+        ${paramName}.erase(${paramName}.find_last_not_of(" \\n\\r\\t\\"") + 1);`;
     }
     
     if (paramType.includes('vector<int>')) {
@@ -36,7 +36,7 @@ function generateInputReadingCode(paramType: string): string {
         arrStr.erase(0, arrStr.find_first_not_of(" \\n\\r\\t["));
         arrStr.erase(arrStr.find_last_not_of(" \\n\\r\\t]") + 1);
         
-        vector<int> arr;
+        vector<int> ${paramName};
         stringstream ss(arrStr);
         string item;
         while (getline(ss, item, ',')) {
@@ -44,36 +44,12 @@ function generateInputReadingCode(paramType: string): string {
             item.erase(0, item.find_first_not_of(" \\n\\r\\t"));
             item.erase(item.find_last_not_of(" \\n\\r\\t") + 1);
             if (!item.empty()) {
-                arr.push_back(stoi(item));
+                ${paramName}.push_back(stoi(item));
             }
         }`;
     }
     
-    if (paramType.includes('vector<string>')) {
-        return `
-        string line;
-        getline(inFile, line);
-        size_t equalPos = line.find("=");
-        if (equalPos == string::npos) {
-            throw runtime_error("Invalid input format: missing '='");
-        }
-        string arrStr = line.substr(equalPos + 1);
-        // Remove whitespace and brackets
-        arrStr.erase(0, arrStr.find_first_not_of(" \\n\\r\\t["));
-        arrStr.erase(arrStr.find_last_not_of(" \\n\\r\\t]") + 1);
-        
-        vector<string> arr;
-        stringstream ss(arrStr);
-        string item;
-        while (getline(ss, item, ',')) {
-            // Remove whitespace and quotes
-            item.erase(0, item.find_first_not_of(" \\n\\r\\t\\""));
-            item.erase(item.find_last_not_of(" \\n\\r\\t\\"") + 1);
-            if (!item.empty()) {
-                arr.push_back(item);
-            }
-        }`;
-    }
+  
     
     if (paramType.includes('vector<vector<int>>')) {
         return `
@@ -204,13 +180,6 @@ function generateInputReadingCode(paramType: string): string {
     return `// Unsupported type: ${paramType}\n`;
 }
 
-function generateParamPassingCode(paramType: string, varName: string): string {
-    if (paramType.includes('vector<')) return varName;
-    if (paramType.includes('TreeNode*')) return 'root';
-    if (paramType.includes('ListNode*')) return 'head';
-    return varName;
-}
-
 export async function generateMainFile(solutionPath: string, testCaseDir: string): Promise<void> {
     try {
         const userCode = await fs.readFile(solutionPath, 'utf-8');
@@ -232,6 +201,9 @@ export async function generateMainFile(solutionPath: string, testCaseDir: string
             return parts.length > 1 ? parts[1].replace('&', '') : `param${index}`;
         });
 
+        // Check if this is a class member function
+        const isClassMethod = userCode.includes('class Solution');
+        
         const mainContent = `
 #include <iostream>
 #include <vector>
@@ -286,6 +258,8 @@ string convertToString(const T& result) {
 }
 
 int main() {
+    ${isClassMethod ? 'Solution solution;' : ''}  // Create solution object if needed
+    
     string testDir = "${testCaseDir}/";
     vector<string> inFiles, outFiles;
     
@@ -321,7 +295,7 @@ int main() {
         
         try {
             // Read inputs
-            ${paramTypes.map((type, index) => generateInputReadingCode(type)).join('\n            ')}
+            ${paramTypes.map((type, index) => generateInputReadingCode(type, paramNames[index])).join('\n            ')}
             
             // Get expected output
             string expected;
@@ -329,9 +303,7 @@ int main() {
             expected = trim(expected);
             
             // Call user's function with correct name
-            Solution solution;
-            auto result = solution.${functionName}(${paramTypes.map((type, index) => 
-                generateParamPassingCode(type, paramNames[index])).join(', ')});
+            auto result = ${isClassMethod ? 'solution.' : ''}${functionName}(${paramNames.join(', ')});
             
             // Convert result to string using template function
             string resultStr = convertToString(result);

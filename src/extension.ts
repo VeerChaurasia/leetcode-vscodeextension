@@ -169,10 +169,6 @@ export function activate(context: vscode.ExtensionContext) {
                 workspacePath = path.dirname(solutionPath);
             }
     
-            // Log workspace and solution paths
-            console.log('Solution file path:', solutionPath);
-            console.log('Workspace path:', workspacePath);
-    
             if (!solutionPath.endsWith('.cpp')) {
                 vscode.window.showErrorMessage('Only C++ files are supported for now');
                 return;
@@ -180,31 +176,57 @@ export function activate(context: vscode.ExtensionContext) {
     
             // Ensure the test directory path is correct
             const testDir = path.join(workspacePath, 'testcases');
-            console.log('Test directory path:', testDir);
+    
+            const outputChannel = vscode.window.createOutputChannel('Test Results');
+            outputChannel.clear();
+            outputChannel.show();
     
             try {
+                // Step 1: Generate main.cpp
                 await generateMainFile(solutionPath, testDir);
+                
                 const mainFilePath = path.join(workspacePath, 'main.cpp');
                 const mainExePath = path.join(workspacePath, 'main');
     
-                exec(`g++ -std=c++17"${mainFilePath}" -o "${mainExePath}" && "${mainExePath}"`, {
-                    cwd: workspacePath
-                }, (error, stdout, stderr) => {
-                    if (error) {
-                        vscode.window.showErrorMessage(`Compilation/Runtime error: ${stderr}`);
-                        return;
+                // Step 2: Compile main.cpp
+                await new Promise<void>((resolve, reject) => {
+                    exec(`g++ -std=c++17 "${mainFilePath}" -o "${mainExePath}"`, 
+                        { cwd: workspacePath }, 
+                        (error, stdout, stderr) => {
+                            if (error) {
+                                outputChannel.appendLine('Compilation Error:');
+                                outputChannel.appendLine(stderr);
+                                reject(error);
+                            } else {
+                                resolve();
+                            }
                     }
-                    const outputChannel = vscode.window.createOutputChannel('Test Results');
-                    outputChannel.show();
-                    outputChannel.appendLine(stdout);
-                    vscode.window.showInformationMessage('Test cases executed successfully!');
+                    );
                 });
+    
+                // Step 3: Execute the compiled binary
+                return new Promise<void>((resolve, reject) => {
+                    exec(`"${mainExePath}"`, 
+                        { cwd: workspacePath }, 
+                        (error, stdout, stderr) => {
+                            if (error) {
+                                outputChannel.appendLine('Execution Error:');
+                                outputChannel.appendLine(stderr);
+                                vscode.window.showErrorMessage('Test cases execution failed');
+                                reject(error);
+                            } else {
+                                outputChannel.appendLine(stdout);
+                                vscode.window.showInformationMessage('Test cases executed successfully!');
+                                resolve();
+                            }
+                    }
+                    );
+                });
+    
             } catch (error) {
-                if (error instanceof Error) {
-                    vscode.window.showErrorMessage(`Error: ${error.message}`);
-                } else {
-                    vscode.window.showErrorMessage('An unknown error occurred');
-                }
+                outputChannel.appendLine('Error:');
+                outputChannel.appendLine(error instanceof Error ? error.message : String(error));
+                vscode.window.showErrorMessage('Failed to run test cases');
             }
         }
     );
