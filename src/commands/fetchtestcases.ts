@@ -33,7 +33,7 @@ export async function fetchTestCases(url: string): Promise<void> {
       console.log(`Extracted titleSlug: ${titleSlug}`);
       const testCases = await getTestCases(titleSlug);
       // Ensure relative path without leading slash
-      const directory = `testCases/`;  // removed leading ./
+      const directory = `testcases/`;  // removed leading ./
       await saveTestCases(testCases, directory);
       console.log(`Test cases for "${titleSlug}" have been saved successfully.`);
     } catch (error) {
