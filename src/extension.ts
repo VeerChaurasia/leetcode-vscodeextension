@@ -70,21 +70,17 @@ export function activate(context: vscode.ExtensionContext) {
             ['C++', 'Python'],
             { placeHolder: 'Choose a language for the code file' }
         );
-
-        if (languageChoice) {
-            // Prompt for problem URL
-            const problemUrl = await vscode.window.showInputBox({
-                prompt: 'Enter the LeetCode problem URL',
-                placeHolder: 'https://leetcode.com/problems/two-sum/',
-            });
-
-            if (problemUrl) {
-                // Now create the code file in the selected folder
-                createCodeFile(languageChoice.toLowerCase(), folderUri.fsPath, problemUrl);
-            } else {
-                vscode.window.showWarningMessage('No URL provided. Command aborted.');
-            }
+        if (!languageChoice) {
+            vscode.window.showErrorMessage('No language selected. Command aborted.');
+            return;
         }
+        
+        const folderPath = folderUri.fsPath;
+        DirectoryExists(folderPath); // Ensure the folder exists
+        createCodeFile(languageChoice.toLowerCase(), folderPath);
+        
+
+        
     });
 
     // Assuming test cases are stored in a 'testcases' directory in the workspace
@@ -152,9 +148,9 @@ const runTestCasesCommand = vscode.commands.registerCommand(
                 canSelectFolders: false,
                 canSelectMany: false,
                 filters: {
+                    'All Files': ['*'],  // Put this first
                     'C++ Files': ['cpp'],
-                    'Python Files': ['py'],
-                    'All Files': ['*']
+                    'Python Files': ['py']
                 },
                 title: 'Select your solution file'
             });
@@ -171,77 +167,80 @@ const runTestCasesCommand = vscode.commands.registerCommand(
             workspacePath = path.dirname(solutionPath);
         }
 
-        const fileExtension = path.extname(solutionPath);
+        const fileExtension = path.extname(solutionPath).toLowerCase();
+        
         const outputChannel = vscode.window.createOutputChannel('Test Results');
         outputChannel.clear();
         outputChannel.show();
 
         try {
-            if (fileExtension === '.cpp') {
-                // Existing C++ test case logic
-                await generateMainFile(solutionPath, path.join(workspacePath, 'testcases'));
-                
-                const mainFilePath = path.join(workspacePath, 'main.cpp');
-                const mainExePath = path.join(workspacePath, 'main');
+            if (['.cpp', '.py'].includes(fileExtension)){
+                if (fileExtension === '.cpp') {
+                    // Existing C++ test case logic
+                    await generateMainFile(solutionPath, path.join(workspacePath, 'testcases'));
+                    
+                    const mainFilePath = path.join(workspacePath, 'main.cpp');
+                    const mainExePath = path.join(workspacePath, 'main');
 
-                // Compile and run C++ test cases
-                await new Promise<void>((resolve, reject) => {
-                    exec(`g++ -std=c++17 "${mainFilePath}" -o "${mainExePath}"`, 
-                        { cwd: workspacePath }, 
-                        (error, stdout, stderr) => {
-                            if (error) {
-                                outputChannel.appendLine('Compilation Error:');
-                                outputChannel.appendLine(stderr);
-                                reject(error);
-                            } else {
+                    // Compile and run C++ test cases
+                    await new Promise<void>((resolve, reject) => {
+                        exec(`g++ -std=c++17 "${mainFilePath}" -o "${mainExePath}"`, 
+                            { cwd: workspacePath }, 
+                            (error, stdout, stderr) => {
+                                if (error) {
+                                    outputChannel.appendLine('Compilation Error:');
+                                    outputChannel.appendLine(stderr);
+                                    reject(error);
+                                } else {
+                                    resolve();
+                                }
+                        }
+                        );
+                    });
+
+                    return new Promise<void>((resolve, reject) => {
+                        exec(`"${mainExePath}"`, 
+                            { cwd: workspacePath }, 
+                            (error, stdout, stderr) => {
+                                outputChannel.appendLine('Full Test Output:');
+                                outputChannel.appendLine(stdout);
+                                
+                                if (error) {
+                                    outputChannel.appendLine('Execution Error Details:');
+                                    outputChannel.appendLine(stderr);
+                                    vscode.window.showErrorMessage('Some test cases failed');
+                                } else {
+                                    vscode.window.showInformationMessage('Test cases executed completely');
+                                }
+                                
+                                // Always resolve, allowing output to be seen even if tests fail
                                 resolve();
                             }
-                    }
-                    );
-                });
+                        );
+                    });
 
-                return new Promise<void>((resolve, reject) => {
-                    exec(`"${mainExePath}"`, 
-                        { cwd: workspacePath }, 
-                        (error, stdout, stderr) => {
-                            outputChannel.appendLine('Full Test Output:');
-                            outputChannel.appendLine(stdout);
-                            
-                            if (error) {
-                                outputChannel.appendLine('Execution Error Details:');
-                                outputChannel.appendLine(stderr);
-                                vscode.window.showErrorMessage('Some test cases failed');
-                            } else {
-                                vscode.window.showInformationMessage('Test cases executed completely');
+                } else if (fileExtension === '.py') {
+                    // New Python test case logic
+                    return new Promise<void>((resolve, reject) => {
+                        // Use the Python test runner script
+                        exec(`python3 "${path.join(__dirname, 'test_runner.py')}" "${solutionPath}"`, 
+                            { cwd: workspacePath }, 
+                            (error, stdout, stderr) => {
+                                if (error) {
+                                    outputChannel.appendLine('Python Test Runner Error:');
+                                    outputChannel.appendLine(stdout);
+                                    outputChannel.appendLine(stderr);
+                                    vscode.window.showErrorMessage('Python test cases execution failed');
+                                    reject(error);
+                                } else {
+                                    outputChannel.appendLine(stdout);
+                                    vscode.window.showInformationMessage('Python test cases executed successfully!');
+                                    resolve();
+                                }
                             }
-                            
-                            // Always resolve, allowing output to be seen even if tests fail
-                            resolve();
-                        }
-                    );
-                });
-
-            } else if (fileExtension === '.py') {
-                // New Python test case logic
-                return new Promise<void>((resolve, reject) => {
-                    // Use the Python test runner script
-                    exec(`python3 "${path.join(__dirname, 'test_runner.py')}" "${solutionPath}"`, 
-                        { cwd: workspacePath }, 
-                        (error, stdout, stderr) => {
-                            if (error) {
-                                outputChannel.appendLine('Python Test Runner Error:');
-                                outputChannel.appendLine(stdout);
-                                outputChannel.appendLine(stderr);
-                                vscode.window.showErrorMessage('Python test cases execution failed');
-                                reject(error);
-                            } else {
-                                outputChannel.appendLine(stdout);
-                                vscode.window.showInformationMessage('Python test cases executed successfully!');
-                                resolve();
-                            }
-                        }
-                    );
-                });
+                        );
+                    });
+                }
             } else {
                 vscode.window.showErrorMessage('Unsupported file type. Only C++ and Python are supported.');
             }
