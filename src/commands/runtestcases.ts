@@ -309,6 +309,8 @@ int main() {
             string resultStr = convertToString(result);
             
             if (resultStr == expected) {
+                cout << "Expected: " << expected << endl;
+                cout << "Got: " << resultStr << endl;
                 cout << "Test case " << (test + 1) << ": Passed ✓" << endl;
                 passedTests++;
             } else {
